@@ -1,0 +1,33 @@
+{
+  "name": "aws-backend",
+  "version": "1.0.0",
+  "description": "",
+  "homepage": "https://github.com/Mariia22/aws-backend#readme",
+  "bugs": {
+    "url": "https://github.com/Mariia22/aws-backend/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Mariia22/aws-backend.git"
+  },
+  "license": "ISC",
+  "author": "",
+  "type": "commonjs",
+  "main": "index.js",
+  "scripts": {
+    "test": "jest",
+    "test:coverage": "jest --coverage",
+    "cdk:synth": "cdk synth",
+    "cdk:deploy": "cdk deploy",
+    "cdk:diff": "cdk diff",
+    "cdk:destroy": "cdk destroy",
+    "cdk:list": "cdk list"
+  },
+  "devDependencies": {
+    "@types/jest": "^30.0.0",
+    "aws-cdk": "^2.1120.0",
+    "jest": "^30.3.0",
+    "ts-jest": "^29.4.9",
+    "ts-node": "^10.9.2"
+  }
+}
