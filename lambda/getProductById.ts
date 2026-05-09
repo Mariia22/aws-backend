@@ -1,32 +1,22 @@
-import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
-import { DynamoDBDocumentClient, GetCommand } from "@aws-sdk/lib-dynamodb";
+import { GetCommand } from "@aws-sdk/lib-dynamodb";
 import { Product } from "../types/Product";
+import {
+  initializeDocClient,
+  getTableNames,
+  errorResponse,
+  successResponse,
+  handleCorsPreFlight,
+  corsHeaders,
+} from "./helpers";
 
-const client = new DynamoDBClient({ region: "us-east-1" });
-const docClient = DynamoDBDocumentClient.from(client);
-
-const PRODUCTS_TABLE = process.env.PRODUCTS_TABLE || "products";
-const STOCKS_TABLE = process.env.STOCKS_TABLE || "stocks";
-
-const errorResponse = (statusCode: number, message: string) => ({
-  statusCode,
-  headers: {
-    "Content-Type": "application/json",
-    "Cache-Control": "no-cache, no-store, must-revalidate",
-  },
-  body: JSON.stringify({ error: message }),
-});
-
-const successResponse = (data: any) => ({
-  statusCode: 200,
-  headers: {
-    "Content-Type": "application/json",
-    "Cache-Control": "no-cache, no-store, must-revalidate",
-  },
-  body: JSON.stringify(data),
-});
+const docClient = initializeDocClient();
+const { PRODUCTS_TABLE, STOCKS_TABLE } = getTableNames();
 
 export const handler = async (event: any) => {
+  // Handle CORS preflight requests
+  const corsResponse = handleCorsPreFlight(event);
+  if (corsResponse) return corsResponse;
+
   try {
     if (!event.pathParameters) {
       return errorResponse(400, "Missing path parameters");

@@ -25,7 +25,7 @@ export class ProductServiceStack extends cdk.Stack {
     const getProductsListLambda = new lambda.Function(this, "GetProductsListFn", {
       runtime: lambda.Runtime.NODEJS_20_X,
       handler: "getProductsList.handler",
-      code: lambda.Code.fromAsset("lambda"),
+      code: lambda.Code.fromAsset("dist/lambda"),
       environment: {
         PRODUCTS_TABLE: productsTable.tableName,
         STOCKS_TABLE: stocksTable.tableName,
@@ -35,7 +35,7 @@ export class ProductServiceStack extends cdk.Stack {
     const getProductByIdLambda = new lambda.Function(this, "GetProductByIdFn", {
       runtime: lambda.Runtime.NODEJS_20_X,
       handler: "getProductById.handler",
-      code: lambda.Code.fromAsset("lambda"),
+      code: lambda.Code.fromAsset("dist/lambda"),
       environment: {
         PRODUCTS_TABLE: productsTable.tableName,
         STOCKS_TABLE: stocksTable.tableName,

@@ -15,6 +15,7 @@
   "type": "commonjs",
   "main": "index.js",
   "scripts": {
+    "build": "tsc",
     "test": "jest",
     "test:coverage": "jest --coverage",
     "cdk:synth": "cdk synth",

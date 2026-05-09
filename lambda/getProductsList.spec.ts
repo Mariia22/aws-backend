@@ -57,8 +57,9 @@ describe("getProductsList handler", () => {
       .resolves({ Items: mockStocks });
 
     const result = await handler();
-    expect(result.headers["Content-Type"]).toBe("application/json");
-    expect(result.headers["Cache-Control"]).toBe("no-cache, no-store, must-revalidate");
+    expect((result.headers as any)["Content-Type"]).toBe("application/json");
+    expect((result.headers as any)["Cache-Control"]).toBe("no-cache, no-store, must-revalidate");
+    expect((result.headers as any)["Access-Control-Allow-Origin"]).toBe("*");
   });
 
   it("should return all products with stock count joined", async () => {
