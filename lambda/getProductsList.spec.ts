@@ -1,63 +1,154 @@
 import { handler } from "./getProductsList";
-import { products } from "../data/products";
+import { DynamoDBDocumentClient, ScanCommand } from "@aws-sdk/lib-dynamodb";
+import { mockClient } from "aws-sdk-client-mock";
+
+const ddbMock = mockClient(DynamoDBDocumentClient);
+
+const mockProducts = [
+  {
+    id: "1",
+    title: "Laptop",
+    description: "Gaming laptop",
+    price: 1500,
+  },
+  {
+    id: "2",
+    title: "Phone",
+    description: "Smartphone",
+    price: 800,
+  },
+  {
+    id: "3",
+    title: "Headphones",
+    description: "Wireless headphones",
+    price: 200,
+  },
+];
+
+const mockStocks = [
+  { product_id: "1", count: 50 },
+  { product_id: "2", count: 30 },
+  { product_id: "3", count: 100 },
+];
 
 describe("getProductsList handler", () => {
+  beforeEach(() => {
+    ddbMock.reset();
+  });
+
   it("should return status code 200", async () => {
+    ddbMock
+      .on(ScanCommand, { TableName: "products" })
+      .resolves({ Items: mockProducts });
+    ddbMock
+      .on(ScanCommand, { TableName: "stocks" })
+      .resolves({ Items: mockStocks });
+
     const result = await handler();
     expect(result.statusCode).toBe(200);
   });
 
   it("should return correct Content-Type header", async () => {
+    ddbMock
+      .on(ScanCommand, { TableName: "products" })
+      .resolves({ Items: mockProducts });
+    ddbMock
+      .on(ScanCommand, { TableName: "stocks" })
+      .resolves({ Items: mockStocks });
+
     const result = await handler();
     expect(result.headers["Content-Type"]).toBe("application/json");
   });
 
-  it("should return all products in the body", async () => {
+  it("should return all products with stock count joined", async () => {
+    ddbMock
+      .on(ScanCommand, { TableName: "products" })
+      .resolves({ Items: mockProducts });
+    ddbMock
+      .on(ScanCommand, { TableName: "stocks" })
+      .resolves({ Items: mockStocks });
+
     const result = await handler();
     const body = JSON.parse(result.body);
-    expect(body).toEqual(products);
+
+    expect(body).toHaveLength(3);
+    expect(body[0]).toEqual({
+      id: "1",
+      title: "Laptop",
+      description: "Gaming laptop",
+      price: 1500,
+      count: 50,
+    });
+    expect(body[1]).toEqual({
+      id: "2",
+      title: "Phone",
+      description: "Smartphone",
+      price: 800,
+      count: 30,
+    });
+    expect(body[2]).toEqual({
+      id: "3",
+      title: "Headphones",
+      description: "Wireless headphones",
+      price: 200,
+      count: 100,
+    });
   });
 
   it("should return valid JSON in body", async () => {
+    ddbMock
+      .on(ScanCommand, { TableName: "products" })
+      .resolves({ Items: mockProducts });
+    ddbMock
+      .on(ScanCommand, { TableName: "stocks" })
+      .resolves({ Items: mockStocks });
+
     const result = await handler();
     expect(() => JSON.parse(result.body)).not.toThrow();
   });
 
-  it("should return correct number of products", async () => {
+  it("should return empty array when no products exist", async () => {
+    ddbMock
+      .on(ScanCommand, { TableName: "products" })
+      .resolves({ Items: [] });
+    ddbMock
+      .on(ScanCommand, { TableName: "stocks" })
+      .resolves({ Items: [] });
+
     const result = await handler();
     const body = JSON.parse(result.body);
-    expect(body).toHaveLength(3);
+    expect(body).toEqual([]);
   });
 
-  it("should return products with correct structure", async () => {
+  it("should handle missing stock data for a product", async () => {
+    const productsWithExtra = [...mockProducts];
+    const productsWithExtra2 = [
+      ...productsWithExtra,
+      { id: "4", title: "Tablet", description: "Tablet device", price: 500 },
+    ];
+
+    ddbMock
+      .on(ScanCommand, { TableName: "products" })
+      .resolves({ Items: productsWithExtra2 });
+    ddbMock
+      .on(ScanCommand, { TableName: "stocks" })
+      .resolves({ Items: mockStocks });
+
     const result = await handler();
     const body = JSON.parse(result.body);
-    body.forEach((product: any) => {
-      expect(product).toHaveProperty("id");
-      expect(product).toHaveProperty("name");
-      expect(product).toHaveProperty("price");
-    });
+
+    const tabletProduct = body.find((p: any) => p.id === "4");
+    expect(tabletProduct.count).toBe(0);
   });
 
-  it("should return complete response object with all required properties", async () => {
+  it("should return 500 error on database exception", async () => {
+    ddbMock
+      .on(ScanCommand, { TableName: "products" })
+      .rejects(new Error("Database error"));
+
     const result = await handler();
-    expect(result).toHaveProperty("statusCode");
-    expect(result).toHaveProperty("headers");
-    expect(result).toHaveProperty("body");
-  });
-
-  it("should return products in correct order", async () => {
-    const result = await handler();
-    const body = JSON.parse(result.body);
-    expect(body[0].id).toBe("1");
-    expect(body[1].id).toBe("2");
-    expect(body[2].id).toBe("3");
-  });
-
-  it("should handle multiple calls consistently", async () => {
-    const result1 = await handler();
-    const result2 = await handler();
-    expect(result1).toEqual(result2);
+    expect(result.statusCode).toBe(500);
+    expect(JSON.parse(result.body).error).toBe("Internal server error");
   });
 });
 
