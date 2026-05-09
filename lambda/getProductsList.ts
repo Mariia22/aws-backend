@@ -12,6 +12,7 @@ const errorResponse = (statusCode: number, message: string) => ({
   statusCode,
   headers: {
     "Content-Type": "application/json",
+    "Cache-Control": "no-cache, no-store, must-revalidate",
   },
   body: JSON.stringify({ error: message }),
 });
@@ -20,6 +21,7 @@ const successResponse = (data: any) => ({
   statusCode: 200,
   headers: {
     "Content-Type": "application/json",
+    "Cache-Control": "no-cache, no-store, must-revalidate",
   },
   body: JSON.stringify(data),
 });

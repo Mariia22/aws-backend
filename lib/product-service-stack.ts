@@ -61,14 +61,28 @@ export class ProductServiceStack extends cdk.Stack {
 
     products.addMethod(
       "GET",
-      new apigateway.LambdaIntegration(getProductsListLambda)
+      new apigateway.LambdaIntegration(getProductsListLambda),
+      {
+        methodResponses: [
+          { statusCode: "200" },
+          { statusCode: "500" },
+        ],
+      }
     );
 
     const singleProduct = products.addResource("{productId}");
 
     singleProduct.addMethod(
       "GET",
-      new apigateway.LambdaIntegration(getProductByIdLambda)
+      new apigateway.LambdaIntegration(getProductByIdLambda),
+      {
+        methodResponses: [
+          { statusCode: "200" },
+          { statusCode: "400" },
+          { statusCode: "404" },
+          { statusCode: "500" },
+        ],
+      }
     );
   }
 }

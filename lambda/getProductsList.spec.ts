@@ -58,6 +58,7 @@ describe("getProductsList handler", () => {
 
     const result = await handler();
     expect(result.headers["Content-Type"]).toBe("application/json");
+    expect(result.headers["Cache-Control"]).toBe("no-cache, no-store, must-revalidate");
   });
 
   it("should return all products with stock count joined", async () => {
