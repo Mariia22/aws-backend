@@ -11,6 +11,6 @@
     "forceConsistentCasingInFileNames": true,
     "types": ["jest", "node"]
   },
-  "include": ["lambda/**/*", "lib/**/*", "data/**/*"],
+  "include": ["lambda/**/*", "product-service/lib/**/*", "data/**/*"],
   "exclude": ["node_modules", "dist"]
 }
