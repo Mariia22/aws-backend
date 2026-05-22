@@ -9,6 +9,8 @@
     "esModuleInterop": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
+    "moduleResolution": "node",
+    "ignoreDeprecations": "6.0",
     "types": ["jest", "node"]
   },
   "include": ["lambda/**/*", "product-service/lib/**/*", "data/**/*"],

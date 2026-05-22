@@ -4,6 +4,8 @@ import * as lambda from "aws-cdk-lib/aws-lambda";
 import * as apigateway from "aws-cdk-lib/aws-apigateway";
 import * as s3 from "aws-cdk-lib/aws-s3";
 import * as s3n from "aws-cdk-lib/aws-s3-notifications";
+import * as sqs from "aws-cdk-lib/aws-sqs";
+import * as iam from "aws-cdk-lib/aws-iam";
 
 export class ImportServiceStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
@@ -42,12 +44,26 @@ export class ImportServiceStack extends cdk.Stack {
         code: lambda.Code.fromAsset("dist/lambda"),
         timeout: cdk.Duration.minutes(5),
         memorySize: 512,
+        environment: {
+          SQS_QUEUE_URL: `https://sqs.${this.region}.amazonaws.com/${this.account}/catalogItemsQueue`,
+        },
       }
     );
 
     // Grant read, write, and delete permissions to parse, copy, and move files
     importBucket.grantRead(importFileParserLambda);
     importBucket.grantWrite(importFileParserLambda);
+
+    // Grant send message permission to SQS queue
+    importFileParserLambda.addToRolePolicy(
+      new iam.PolicyStatement({
+        effect: iam.Effect.ALLOW,
+        actions: ["sqs:SendMessage"],
+        resources: [
+          `arn:aws:sqs:${this.region}:${this.account}:catalogItemsQueue`,
+        ],
+      })
+    );
 
     // Add S3 event notification for ObjectCreated events in the uploaded folder
     importBucket.addEventNotification(

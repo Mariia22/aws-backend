@@ -4,10 +4,12 @@ import {
   CopyObjectCommand,
   DeleteObjectCommand,
 } from "@aws-sdk/client-s3";
+import { SQSClient, SendMessageCommand } from "@aws-sdk/client-sqs";
 import { Readable } from "stream";
 import csv from "csv-parser";
 
 const s3Client = new S3Client({ region: process.env.AWS_REGION });
+const sqsClient = new SQSClient({ region: process.env.AWS_REGION });
 
 export const handler = async (event: any) => {
   try {
@@ -24,20 +26,32 @@ export const handler = async (event: any) => {
     });
 
     const response = await s3Client.send(command);
+    const sqsQueueUrl = process.env.SQS_QUEUE_URL;
 
     const stream = response.Body as Readable;
 
     return new Promise((resolve, reject) => {
-      const records: any[] = [];
+      let recordCount = 0;
 
       stream
         .pipe(csv())
-        .on("data", (record) => {
-          console.log("Parsed record:", JSON.stringify(record));
-          records.push(record);
+        .on("data", async (record) => {
+          try {
+            // Send each CSV record to SQS
+            await sqsClient.send(
+              new SendMessageCommand({
+                QueueUrl: sqsQueueUrl,
+                MessageBody: JSON.stringify(record),
+              })
+            );
+            recordCount++;
+          } catch (error) {
+            console.error("Error sending message to SQS:", error);
+            throw error;
+          }
         })
         .on("end", async () => {
-          console.log(`Successfully processed ${records.length} records`);
+          console.log(`Successfully sent ${recordCount} records to SQS`);
 
           try {
             const fileName = key.split("/").pop();
@@ -60,7 +74,7 @@ export const handler = async (event: any) => {
 
             resolve({
               statusCode: 200,
-              recordsProcessed: records.length,
+              recordsProcessed: recordCount,
               fileMoved: true,
             });
           } catch (error) {
