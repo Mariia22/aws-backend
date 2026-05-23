@@ -34,6 +34,13 @@ export class ImportServiceStack extends cdk.Stack {
 
     importBucket.grantWrite(importProductsFileLambda);
 
+    // Reference the existing SQS queue
+    const catalogItemsQueue = sqs.Queue.fromQueueArn(
+      this,
+      "CatalogItemsQueue",
+      `arn:aws:sqs:${this.region}:${this.account}:catalogItemsQueue`
+    );
+
     // Lambda function to parse CSV files
     const importFileParserLambda = new lambda.Function(
       this,

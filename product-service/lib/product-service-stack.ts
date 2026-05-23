@@ -24,11 +24,12 @@ export class ProductServiceStack extends cdk.Stack {
       billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
     });
 
-    const catalogItemsQueue = new sqs.Queue(this, "CatalogItemsQueue", {
-      queueName: "catalogItemsQueue",
-      removalPolicy: cdk.RemovalPolicy.DESTROY,
-      visibilityTimeout: cdk.Duration.seconds(300),
-    });
+    // Import the existing SQS queue
+    const catalogItemsQueue = sqs.Queue.fromQueueArn(
+      this,
+      "CatalogItemsQueue",
+      `arn:aws:sqs:${this.region}:${this.account}:catalogItemsQueue`
+    );
 
     const catalogBatchProcessLambda = new lambda.Function(this, "CatalogBatchProcessFn", {
       runtime: lambda.Runtime.NODEJS_20_X,
