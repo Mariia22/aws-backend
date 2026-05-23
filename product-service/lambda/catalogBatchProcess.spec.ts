@@ -6,6 +6,7 @@ import * as helpers from "./helpers";
 jest.mock("./helpers");
 
 const mockSend = jest.fn();
+const mockSnsSend = jest.fn();
 
 jest.mock("@aws-sdk/lib-dynamodb", () => ({
   ...jest.requireActual("@aws-sdk/lib-dynamodb"),
@@ -14,6 +15,13 @@ jest.mock("@aws-sdk/lib-dynamodb", () => ({
       send: mockSend,
     })),
   },
+}));
+
+jest.mock("@aws-sdk/client-sns", () => ({
+  SNSClient: jest.fn(() => ({
+    send: mockSnsSend,
+  })),
+  PublishCommand: jest.fn((params) => ({ params })),
 }));
 
 jest.mock("uuid", () => ({
@@ -44,8 +52,13 @@ describe("catalogBatchProcess Lambda", () => {
       PRODUCTS_TABLE: "products",
       STOCKS_TABLE: "stocks",
     });
+    process.env.SNS_TOPIC_ARN = "arn:aws:sns:us-east-1:123456789:createProductTopic";
     jest.spyOn(console, "log").mockImplementation();
     jest.spyOn(console, "error").mockImplementation();
+  });
+
+  afterEach(() => {
+    delete process.env.SNS_TOPIC_ARN;
   });
 
   afterEach(() => {
@@ -80,10 +93,12 @@ describe("catalogBatchProcess Lambda", () => {
     };
 
     mockSend.mockResolvedValue({});
+    mockSnsSend.mockResolvedValue({});
 
     await handler(event, mockContext as Context, jest.fn());
 
-    expect(mockSend).toHaveBeenCalledTimes(2);
+    expect(mockSend).toHaveBeenCalledTimes(2); // PutCommand for product and stock
+    expect(mockSnsSend).toHaveBeenCalledTimes(1); // PublishCommand for SNS
   });
 
   it("should process multiple messages in a batch", async () => {
@@ -135,10 +150,12 @@ describe("catalogBatchProcess Lambda", () => {
     };
 
     mockSend.mockResolvedValue({});
+    mockSnsSend.mockResolvedValue({});
 
     await handler(event, mockContext as Context, jest.fn());
 
     expect(mockSend).toHaveBeenCalledTimes(4); // 2 messages * 2 operations (product + stock)
+    expect(mockSnsSend).toHaveBeenCalledTimes(2); // 2 PublishCommands for SNS
   });
 
   it("should handle missing required fields", async () => {
