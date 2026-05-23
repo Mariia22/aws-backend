@@ -3,6 +3,8 @@ import { Construct } from "constructs";
 import * as lambda from "aws-cdk-lib/aws-lambda";
 import * as apigateway from "aws-cdk-lib/aws-apigateway";
 import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
+import * as sqs from "aws-cdk-lib/aws-sqs";
+import * as lambdaEventSources from "aws-cdk-lib/aws-lambda-event-sources";
 
 export class ProductServiceStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
@@ -21,6 +23,33 @@ export class ProductServiceStack extends cdk.Stack {
       removalPolicy: cdk.RemovalPolicy.DESTROY,
       billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
     });
+
+    // Import the existing SQS queue
+    const catalogItemsQueue = sqs.Queue.fromQueueArn(
+      this,
+      "CatalogItemsQueue",
+      `arn:aws:sqs:${this.region}:${this.account}:catalogItemsQueue`
+    );
+
+    const catalogBatchProcessLambda = new lambda.Function(this, "CatalogBatchProcessFn", {
+      runtime: lambda.Runtime.NODEJS_20_X,
+      handler: "catalogBatchProcess.handler",
+      code: lambda.Code.fromAsset("dist/lambda"),
+      environment: {
+        PRODUCTS_TABLE: productsTable.tableName,
+        STOCKS_TABLE: stocksTable.tableName,
+      },
+      timeout: cdk.Duration.seconds(60),
+    });
+
+    catalogBatchProcessLambda.addEventSource(
+      new lambdaEventSources.SqsEventSource(catalogItemsQueue, {
+        batchSize: 5,
+      })
+    );
+
+    productsTable.grantWriteData(catalogBatchProcessLambda);
+    stocksTable.grantWriteData(catalogBatchProcessLambda);
 
     const getProductsListLambda = new lambda.Function(this, "GetProductsListFn", {
       runtime: lambda.Runtime.NODEJS_20_X,

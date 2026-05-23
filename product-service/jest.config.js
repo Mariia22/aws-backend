@@ -5,7 +5,14 @@ module.exports = {
   testMatch: ["**/*.spec.ts"],
   moduleFileExtensions: ["ts", "js"],
   transform: {
-    "^.+\\.ts$": "ts-jest",
+    "^.+\\.ts$": ["ts-jest", {
+      tsconfig: {
+        esModuleInterop: true,
+      },
+    }],
   },
+  transformIgnorePatterns: [
+    "node_modules/(?!(uuid)/)",
+  ],
   collectCoverageFrom: ["lambda/**/*.ts", "!lambda/**/*.spec.ts"],
 };

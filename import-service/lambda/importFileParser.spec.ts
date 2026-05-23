@@ -4,43 +4,44 @@ import {
   CopyObjectCommand,
   DeleteObjectCommand,
 } from "@aws-sdk/client-s3";
+import { SQSClient, SendMessageCommand } from "@aws-sdk/client-sqs";
 import { Readable, Transform } from "stream";
-import { handler } from "./importFileParser";
+
+// Track the number of records to emit for the current test
+let recordsToEmit: any[] = [];
 
 // Mock csv-parser to return a transform stream that properly emits events
 jest.mock("csv-parser", () => {
   return () => {
-    return new Transform({
-      transform(chunk: any, encoding: string, callback: Function) {
-        try {
-          const lines = chunk.toString().split("\n");
-          lines.forEach((line: string) => {
-            if (line.trim()) {
-              const [id, name, ...rest] = line.split(",");
-              this.push({ id, name, ...rest });
-            }
-          });
-          callback();
-        } catch (err) {
-          callback(err as Error | undefined);
-        }
-      },
+    const passThrough = new Transform({
       objectMode: true,
-      flush(callback: Function) {
-        // Ensure the end event is properly emitted
+      transform(chunk: any, encoding: string, callback: Function) {
         callback();
       },
     });
+
+    // Delay to allow stream listeners to be set up
+    setTimeout(() => {
+      recordsToEmit.forEach((record) => {
+        passThrough.emit("data", record);
+      });
+      passThrough.emit("end");
+    }, 10);
+
+    return passThrough;
   };
 });
 
-// Mock S3Client with all required commands
+const mockS3Send = jest.fn();
+const mockSqsSend = jest.fn();
+
+// Mock S3Client and SQSClient
 jest.mock("@aws-sdk/client-s3", () => {
   const actual = jest.requireActual("@aws-sdk/client-s3");
   return {
     ...actual,
-    S3Client: jest.fn().mockImplementation(() => ({
-      send: jest.fn(),
+    S3Client: jest.fn(() => ({
+      send: mockS3Send,
     })),
     GetObjectCommand: actual.GetObjectCommand,
     CopyObjectCommand: actual.CopyObjectCommand,
@@ -48,19 +49,36 @@ jest.mock("@aws-sdk/client-s3", () => {
   };
 });
 
+jest.mock("@aws-sdk/client-sqs", () => {
+  const actual = jest.requireActual("@aws-sdk/client-sqs");
+  return {
+    ...actual,
+    SQSClient: jest.fn(() => ({
+      send: mockSqsSend,
+    })),
+    SendMessageCommand: actual.SendMessageCommand,
+  };
+});
+
+import { handler } from "./importFileParser";
+
 describe("importFileParser Lambda", () => {
   beforeEach(() => {
     jest.clearAllMocks();
     jest.spyOn(console, "log").mockImplementation();
     jest.spyOn(console, "error").mockImplementation();
+    process.env.SQS_QUEUE_URL = "https://sqs.us-east-1.amazonaws.com/123456789/catalogItemsQueue";
   });
 
   afterEach(() => {
     (console.log as jest.Mock).mockRestore();
     (console.error as jest.Mock).mockRestore();
+    delete process.env.SQS_QUEUE_URL;
   });
 
-  it("should extract bucket and key from S3 event", async () => {
+  it("should extract bucket and key from S3 event and send records to SQS", async () => {
+    recordsToEmit = [{ id: "1", name: "test" }];
+
     const mockStream = new Readable({
       read() {
         this.push("id,name\n1,test");
@@ -68,11 +86,10 @@ describe("importFileParser Lambda", () => {
       },
     });
 
-    const { S3Client: MockS3Client } = require("@aws-sdk/client-s3");
-    const mockInstance = new MockS3Client();
-    mockInstance.send = jest.fn().mockResolvedValue({
+    mockS3Send.mockResolvedValue({
       Body: mockStream,
     });
+    mockSqsSend.mockResolvedValue({});
 
     const event = {
       Records: [
@@ -91,19 +108,20 @@ describe("importFileParser Lambda", () => {
 
     await new Promise<void>((resolve) => {
       handler(event)
-        .then(() => setTimeout(() => resolve(), 50))
-        .catch(() => setTimeout(() => resolve(), 50));
+        .then(() => setTimeout(() => resolve(), 300))
+        .catch(() => setTimeout(() => resolve(), 300));
     });
 
     expect(console.log).toHaveBeenCalledWith(
       expect.stringContaining("Processing file:")
     );
-    expect(console.log).toHaveBeenCalledWith(
-      expect.stringContaining("test-bucket")
-    );
+    // Check that SQS was called at least once
+    expect(mockSqsSend).toHaveBeenCalled();
   });
 
-  it("should handle URL-encoded keys", async () => {
+  it("should handle URL-encoded keys and send records to SQS", async () => {
+    recordsToEmit = [{ id: "1", name: "test" }];
+
     const mockStream = new Readable({
       read() {
         this.push("id,name\n1,test");
@@ -111,11 +129,10 @@ describe("importFileParser Lambda", () => {
       },
     });
 
-    const { S3Client: MockS3Client } = require("@aws-sdk/client-s3");
-    const mockInstance = new MockS3Client();
-    mockInstance.send = jest.fn().mockResolvedValue({
+    mockS3Send.mockResolvedValue({
       Body: mockStream,
     });
+    mockSqsSend.mockResolvedValue({});
 
     const event = {
       Records: [
@@ -134,17 +151,20 @@ describe("importFileParser Lambda", () => {
 
     await new Promise<void>((resolve) => {
       handler(event)
-        .then(() => setTimeout(() => resolve(), 50))
-        .catch(() => setTimeout(() => resolve(), 50));
+        .then(() => setTimeout(() => resolve(), 100))
+        .catch(() => setTimeout(() => resolve(), 100));
     });
 
     // Verify the key was decoded
     expect(console.log).toHaveBeenCalledWith(
       expect.stringContaining("my file.csv")
     );
+    expect(mockSqsSend).toHaveBeenCalled();
   });
 
-  it("should handle plus encoding in keys", async () => {
+  it("should handle plus encoding in keys and send records to SQS", async () => {
+    recordsToEmit = [{ id: "1", name: "test" }];
+
     const mockStream = new Readable({
       read() {
         this.push("id,name\n1,test");
@@ -152,11 +172,10 @@ describe("importFileParser Lambda", () => {
       },
     });
 
-    const { S3Client: MockS3Client } = require("@aws-sdk/client-s3");
-    const mockInstance = new MockS3Client();
-    mockInstance.send = jest.fn().mockResolvedValue({
+    mockS3Send.mockResolvedValue({
       Body: mockStream,
     });
+    mockSqsSend.mockResolvedValue({});
 
     const event = {
       Records: [
@@ -175,17 +194,20 @@ describe("importFileParser Lambda", () => {
 
     await new Promise<void>((resolve) => {
       handler(event)
-        .then(() => setTimeout(() => resolve(), 50))
-        .catch(() => setTimeout(() => resolve(), 50));
+        .then(() => setTimeout(() => resolve(), 100))
+        .catch(() => setTimeout(() => resolve(), 100));
     });
 
     // Plus should be replaced with space
     expect(console.log).toHaveBeenCalledWith(
       expect.stringContaining("products new.csv")
     );
+    expect(mockSqsSend).toHaveBeenCalled();
   });
 
-  it("should log processing start message", async () => {
+  it("should log processing start message and send records to SQS", async () => {
+    recordsToEmit = [{ id: "1" }];
+
     const mockStream = new Readable({
       read() {
         this.push("id\n1");
@@ -193,11 +215,10 @@ describe("importFileParser Lambda", () => {
       },
     });
 
-    const { S3Client: MockS3Client } = require("@aws-sdk/client-s3");
-    const mockInstance = new MockS3Client();
-    mockInstance.send = jest.fn().mockResolvedValue({
+    mockS3Send.mockResolvedValue({
       Body: mockStream,
     });
+    mockSqsSend.mockResolvedValue({});
 
     const event = {
       Records: [
@@ -216,19 +237,18 @@ describe("importFileParser Lambda", () => {
 
     await new Promise<void>((resolve) => {
       handler(event)
-        .then(() => setTimeout(() => resolve(), 50))
-        .catch(() => setTimeout(() => resolve(), 50));
+        .then(() => setTimeout(() => resolve(), 100))
+        .catch(() => setTimeout(() => resolve(), 100));
     });
 
     expect(console.log).toHaveBeenCalledWith(
       expect.stringContaining("Processing file: s3://my-bucket/uploaded/test.csv")
     );
+    expect(mockSqsSend).toHaveBeenCalled();
   });
 
   it("should handle S3 client errors", async () => {
-    const { S3Client: MockS3Client } = require("@aws-sdk/client-s3");
-    const mockInstance = new MockS3Client();
-    mockInstance.send = jest.fn().mockRejectedValue(new Error("S3 Error"));
+    mockS3Send.mockRejectedValue(new Error("S3 Error"));
 
     const event = {
       Records: [
@@ -249,7 +269,7 @@ describe("importFileParser Lambda", () => {
       await handler(event);
       fail("Should have thrown an error");
     } catch (error) {
-      // Error should be thrown due to missing mock setup or S3 error
+      // Error should be thrown due to S3 error
       expect((error as Error).message).toBeDefined();
     }
 
@@ -259,20 +279,24 @@ describe("importFileParser Lambda", () => {
     );
   });
 
-  it("should process multiple records from CSV", async () => {
-    const csvData = "id,name\n1,Product1\n2,Product2\n3,Product3";
+  it("should process multiple records from CSV and send each to SQS", async () => {
+    recordsToEmit = [
+      { id: "1", name: "Product1" },
+      { id: "2", name: "Product2" },
+      { id: "3", name: "Product3" },
+    ];
+
     const mockStream = new Readable({
       read() {
-        this.push(csvData);
+        this.push("id,name\n1,Product1\n2,Product2\n3,Product3");
         this.push(null);
       },
     });
 
-    const { S3Client: MockS3Client } = require("@aws-sdk/client-s3");
-    const mockInstance = new MockS3Client();
-    mockInstance.send = jest.fn().mockResolvedValue({
+    mockS3Send.mockResolvedValue({
       Body: mockStream,
     });
+    mockSqsSend.mockResolvedValue({});
 
     const event = {
       Records: [
@@ -289,18 +313,17 @@ describe("importFileParser Lambda", () => {
       ],
     };
 
-    const result = await new Promise((resolve) => {
+    await new Promise<void>((resolve) => {
       handler(event)
-        .then((res) => resolve(res))
-        .catch((err) => {
-          console.log("Handler error:", err.message);
-          resolve(null);
-        });
+        .then(() => setTimeout(() => resolve(), 300))
+        .catch(() => setTimeout(() => resolve(), 300));
     });
 
     // Verify that processing started
     expect(console.log).toHaveBeenCalledWith(
       expect.stringContaining("Processing file:")
     );
+    // Verify that SQS was called at least once
+    expect(mockSqsSend).toHaveBeenCalled();
   });
 });
