@@ -28,8 +28,18 @@ export async function getImportSignedUrl(
   const url = new URL(API_PATHS.IMPORT.FILE, apiBaseUrl);
   url.searchParams.append("name", fileName);
 
+
+  const authorization_token = localStorage.getItem("authorization_token");
+
+  const headers: HeadersInit = {};
+  
+  if (authorization_token) {
+    headers["Authorization"] = `Basic ${authorization_token}`;
+  }
+
   const response = await fetch(url.toString(), {
     method: "GET",
+    headers,
   });
 
   if (!response.ok) {

@@ -4,6 +4,8 @@ import * as lambda from "aws-cdk-lib/aws-lambda";
 import * as apigateway from "aws-cdk-lib/aws-apigateway";
 import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
 import * as sqs from "aws-cdk-lib/aws-sqs";
+import * as sns from "aws-cdk-lib/aws-sns";
+import * as snsSubscriptions from "aws-cdk-lib/aws-sns-subscriptions";
 import * as lambdaEventSources from "aws-cdk-lib/aws-lambda-event-sources";
 
 export class ProductServiceStack extends cdk.Stack {
@@ -31,6 +33,53 @@ export class ProductServiceStack extends cdk.Stack {
       `arn:aws:sqs:${this.region}:${this.account}:catalogItemsQueue`
     );
 
+    // Create SNS topic for product creation notifications
+    const createProductTopic = sns.Topic.fromTopicArn(
+      this,
+      "CreateProductTopic",
+      `arn:aws:sns:${this.region}:${this.account}:createProductTopic`
+    );
+
+    // Email subscriptions with filter policies
+    // High-price products (>= $100) to premium-deals@example.com
+    createProductTopic.addSubscription(
+      new snsSubscriptions.EmailSubscription("premium-deals@example.com", {
+        filterPolicy: {
+          price: sns.SubscriptionFilter.numericFilter({
+            greaterThanOrEqualTo: 100,
+          }),
+        },
+      })
+    );
+
+    // Budget products (< $50) to budget-deals@example.com
+    createProductTopic.addSubscription(
+      new snsSubscriptions.EmailSubscription("budget-deals@example.com", {
+        filterPolicy: {
+          price: sns.SubscriptionFilter.numericFilter({
+            lessThan: 50,
+          }),
+        },
+      })
+    );
+
+    // Mid-range products ($50-$99.99) to mid-range@example.com
+    createProductTopic.addSubscription(
+      new snsSubscriptions.EmailSubscription("mid-range@example.com", {
+        filterPolicy: {
+          price: sns.SubscriptionFilter.numericFilter({
+            greaterThanOrEqualTo: 50,
+            lessThan: 100,
+          }),
+        },
+      })
+    );
+
+    // All products to admin@example.com (no filter)
+    createProductTopic.addSubscription(
+      new snsSubscriptions.EmailSubscription("admin@example.com")
+    );
+
     const catalogBatchProcessLambda = new lambda.Function(this, "CatalogBatchProcessFn", {
       runtime: lambda.Runtime.NODEJS_20_X,
       handler: "catalogBatchProcess.handler",
@@ -38,9 +87,13 @@ export class ProductServiceStack extends cdk.Stack {
       environment: {
         PRODUCTS_TABLE: productsTable.tableName,
         STOCKS_TABLE: stocksTable.tableName,
+        SNS_TOPIC_ARN: createProductTopic.topicArn,
       },
       timeout: cdk.Duration.seconds(60),
     });
+
+    // Grant SNS publish permission to the lambda
+    createProductTopic.grantPublish(catalogBatchProcessLambda);
 
     catalogBatchProcessLambda.addEventSource(
       new lambdaEventSources.SqsEventSource(catalogItemsQueue, {
