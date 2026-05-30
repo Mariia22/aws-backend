@@ -81,6 +81,21 @@ export class ImportServiceStack extends cdk.Stack {
       }
     );
 
+    const basicAuthorizerLambda = lambda.Function.fromFunctionName(
+      this,
+      "BasicAuthorizerFn",
+      "BasicAuthorizerFunction"
+    );
+
+    const tokenAuthorizer = new apigateway.TokenAuthorizer(
+      this,
+      "BasicTokenAuthorizer",
+      {
+        handler: basicAuthorizerLambda,
+        identitySource: "method.request.header.Authorization",
+      }
+    );
+
     // API Gateway setup
     const api = new apigateway.RestApi(this, "ImportApi", {
       restApiName: "Import Service",
@@ -96,12 +111,17 @@ export class ImportServiceStack extends cdk.Stack {
       "GET",
       new apigateway.LambdaIntegration(importProductsFileLambda),
       {
+        authorizer: tokenAuthorizer,
+        authorizationType: apigateway.AuthorizationType.CUSTOM,
         requestParameters: {
+          "method.request.header.Authorization": true,
           "method.request.querystring.name": true,
         },
         methodResponses: [
           { statusCode: "200" },
           { statusCode: "400" },
+          { statusCode: "401" },
+          { statusCode: "403" },
           { statusCode: "500" },
         ],
       }
